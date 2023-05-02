@@ -1,0 +1,69 @@
+{{ define "css" }}
+<style>
+	:root {
+		--clr-bg-1: #222;
+		--br: 6px;
+	}
+
+	* {
+		font-family: inherit;
+		color: inherit;
+		margin: 0;
+		padding: 0;
+		background-color: transparent;
+	}
+
+	body {
+		font-family: monospace;
+		background-color: black;
+		color: white;
+	}
+
+	body>main {
+		padding: 1rem;
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+
+	hr {
+		border: none;
+		background-color: #444;
+		height: 1px;
+	}
+
+	ul,
+	menu {
+		list-style-type: none;
+	}
+
+	input[type="text"],
+	textarea {
+		padding: 0.25rem;
+	}
+
+	textarea {
+		resize: vertical;
+	}
+
+	form.vertical {
+		display: flex;
+		flex-direction: column;
+		gap: 1.5rem;
+	}
+
+	form.vertical label {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	button,
+	input[type=submit] {
+		border: 1px solid grey;
+		padding: 1rem;
+		text-decoration: underline;
+		cursor: pointer;
+	}
+</style>
+{{ end }}
