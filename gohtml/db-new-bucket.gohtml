@@ -1,0 +1,11 @@
+{{ define "title" }}Create a new bucket{{ end }}
+{{ define "main" }}
+<main>
+	<form action="/bucket" method="post" class="vertical tile">
+		<h1>Create a new bucket</h1>
+		<hr>
+		<label>Name<input type="text" name="name"></label>
+		<input type="submit" value="Create">
+	</form>
+</main>
+{{ end }}

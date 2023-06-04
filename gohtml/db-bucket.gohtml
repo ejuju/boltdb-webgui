@@ -1,0 +1,56 @@
+{{ define "title" }}{{ .Local.ID }}{{ end }}
+{{ define "main" }}
+<main>
+	<h1>Bucket "{{ .Local.ID }}"</h1>
+
+	<menu type="toolbar">
+		<li>
+			<a role="button" href="/db/bucket/new-row?id={{ .Local.ID }}">
+				Add a new row
+			</a>
+		</li>
+		<li>
+			<a role="button" href="/db/bucket/delete?id={{ .Local.ID }}" style="background-color: var(--color-danger);">
+				Delete this bucket
+			</a>
+		</li>
+	</menu>
+
+	<!-- {{ if .Local.Rows }}
+	<form action="/bucket" method="get" hx-boost="true">
+		<input type="hidden" name="id" value="{{ .Local.ID }}">
+		<select name="page">
+			{{ range $i, $_ := .Local.Pages }}
+			<option value="{{ $i }}" {{- if eq $.Page $i }} selected{{ end }}>{{ $i }}</option>
+			{{ end }}
+		</select>
+		<input type="submit" value="Refresh">
+	</form>
+	{{ end }} -->
+
+	<section id="rows" style="margin-top: 32px; display: grid; gap: 16px;">
+		{{ range .Local.Rows }}
+		<article class="tile" style="display: flex; align-items: center; gap: 16px;">
+			<h3>{{ .Key }}</h3>
+			<pre>{{ .Value }}</pre>
+			<menu style="display: flex; align-items: center; gap: 16px; margin-left: auto;">
+				<li>
+					<a href="/db/bucket/edit-row?key={{ .Key }}" role="button"
+						style="background-color: var(--color-neutral);">
+						Edit
+					</a>
+				</li>
+				<li>
+					<form action="/db/bucket/delete-row?id={{ $.ID }}&key={{ .Key }}" method="post">
+						<input type="submit" value="Delete" style="background-color: var(--color-danger);">
+					</form>
+				</li>
+			</menu>
+		</article>
+		{{ else }}
+		<p>No rows to show yet.</p>
+		{{ end }}
+	</section>
+</main>
+
+{{ end }}

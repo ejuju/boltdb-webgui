@@ -1,0 +1,8 @@
+{{ define "title"}}{{ .Local.StatusCode }} {{ .Local.StatusText }}{{ end }}
+{{ define "main" }}
+<main>
+	<h1>{{ .Local.StatusCode }} {{ .Local.StatusText }}</h1>
+	<p>{{ .Local.Error }}</p>
+	<a href="/">Go to home page</a>
+</main>
+{{ end }}

@@ -1,0 +1,26 @@
+{{ define "title" }}Buckets{{ end }}
+{{ define "main" }}
+<main>
+	<h1>Buckets</h1>
+	<menu type="toolbar">
+		<li>
+			<a role="button" href="/db/new-bucket">Create a new bucket</a>
+		</li>
+	</menu>
+
+	<hr style="margin-top: 32px;">
+
+	{{ block "buckets" .Local.Buckets }}
+	<ul>
+		{{ range . }}
+		<li><a href="/db/bucket?id={{ .Name }}">{{ .Name }} ({{ .NumRows }} rows)</a></li>
+		{{ if .SubBuckets }}
+		{{ template "buckets" .SubBuckets }}
+		{{ end }}
+		{{ else }}
+		<p>No buckets to show yet</p>
+		{{ end }}
+	</ul>
+	{{ end }}
+</main>
+{{ end }}
