@@ -1,0 +1,121 @@
+{{ define "title" }}Search results{{ end }}
+{{ define "main" }}
+<main>
+	<h1>Search rows</h1>
+	{{ if .Local.Result.Rows }}
+	<p>{{ .Local.Result.TotalResults }} rows found</p>
+	{{ end }}
+
+	<form action="/db/search" method="get" class="vertical tile" style="margin: 0;">
+		<fieldset>
+			<legend>Include lists</legend>
+			{{ range $name, $checked := .Local.Lists }}
+			<label style="display: flex; align-items: center; gap: 8px">
+				<input type="checkbox" name="list" value="{{ $name }}" {{ if $checked }}checked{{ end }}>
+				{{ $name }}
+			</label>
+			{{ end }}
+		</fieldset>
+
+		<fieldset>
+			<legend>Match string or Regex</legend>
+			<textarea name="query" rows="1" placeholder="Enter your query here...">{{ .Local.Query }}</textarea>
+			<div style="display: flex; gap: 16px;">
+				<label>
+					<input type="radio" name="exclude" value="false" {{ if not .Local.Exclude }}checked{{ end }}>
+					Include matches
+				</label>
+				<label>
+					<input type="radio" name="exclude" value="true" {{ if .Local.Exclude }}checked{{ end }}>
+					Exclude matches
+				</label>
+			</div>
+		</fieldset>
+
+		{{ if not (eq (len .Local.Pages) 1) }}
+		<label>
+			Page ({{ .Local.PageIndex }}/{{ len .Local.Pages }})<br />
+			<select name="page">
+				{{ range $i, $_ := .Local.Pages }}
+				<option value="{{ $i }}" {{ if eq $.Local.PageIndex $i }} selected{{ end }}>
+					{{ $i }}
+				</option>
+				{{ end }}
+			</select>
+		</label>
+		{{ end }}
+
+		<input type="submit" value="Search" style="width: 100%;">
+	</form>
+
+	{{ if .Local.Result.Rows }}
+	<section id="bucket-rows">
+		{{ range .Local.Result.Rows }}
+		<section>
+			<h3 class="truncate-text">
+				{{ if gt (len $.Local.SelectedLists) 1 }}{{ .ListID }}:{{ end }}
+				{{ .Row.Key }}
+			</h3>
+			<p>{{ .Row.Size }} bytes</p>
+			<menu type="toolbar">
+				<li style="margin-left: auto;">
+					<a href="/db/bucket/edit-row?id={{ QueryEscape .ListID }}&key={{ .Row.Key }}" role="button"
+						style="background-color: var(--color-neutral);">
+						Edit
+					</a>
+				</li>
+				<li>
+					<form action="/db/bucket/delete-row" method="post">
+						<input type="hidden" name="id" value="{{ .ListID }}">
+						<input type="hidden" name="key" value="{{ .Row.Key }}">
+						<input type="submit" value="Delete" style="background-color: var(--color-danger);">
+					</form>
+				</li>
+			</menu>
+			{{ if .Row.Value }}
+			<pre>{{ .Row.Value }}</pre>
+			{{ end }}
+		</section>
+		{{ end }}
+	</section>
+	{{ end }}
+
+	<style>
+		#bucket-rows {
+			margin-top: 32px;
+			display: grid;
+			gap: 16px;
+		}
+
+		#bucket-rows>section {
+			display: grid;
+			grid-template-columns: 1fr auto auto;
+			grid-template-rows: auto auto;
+			align-items: center;
+			background-color: var(--color-bg-2);
+			border-radius: var(--border-radius);
+			max-width: 100%;
+		}
+
+		#bucket-rows>section>h3 {
+			padding: 16px;
+		}
+
+		#bucket-rows>section>menu {
+			padding: 16px;
+			margin-left: auto;
+		}
+
+		#bucket-rows>section>pre {
+			border-top: 1px solid var(--color-bg-3);
+			width: 100%;
+			padding: 16px;
+			white-space: pre-wrap;
+			word-wrap: break-word;
+			word-break: break-all;
+			grid-column: span 3;
+		}
+	</style>
+</main>
+
+{{ end }}

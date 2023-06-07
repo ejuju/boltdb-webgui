@@ -65,10 +65,3 @@ func (s *Server) respondErrorPageHTMLTmpl(w http.ResponseWriter, r *http.Request
 func (s *Server) respondPageOK(w http.ResponseWriter, r *http.Request, t *template.Template, data any) {
 	s.respondHTMLTmpl(w, r, http.StatusOK, t, tmplLayoutKey, data)
 }
-
-type Breadcrumbs []Breadcrumb
-
-type Breadcrumb struct {
-	Name string
-	Path string
-}

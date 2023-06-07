@@ -1,8 +1,11 @@
 package kvstore
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 )
 
 type DB interface {
@@ -120,4 +123,59 @@ func GetListInfo(db DB, listName string) (*ListInfo, error) {
 	}
 
 	return info, nil
+}
+
+type SearchResult struct {
+	TotalResults uint64
+	Rows         []*SearchResultRow
+}
+
+type SearchResultRow struct {
+	ListID string
+	Row    *Row
+	Match  string
+}
+
+func Search(db DB, lists []string, regex *regexp.Regexp, excludeMatches bool, page, numRowsPerPage int) (*SearchResult, error) {
+	out := &SearchResult{}
+	offset := page * numRowsPerPage
+	for _, list := range lists {
+		// For each list to search in, return rows matching regex (or all rows if no regex was provided)
+		i := 0 // offset counter for pagination
+		err := db.ReadEachRow(list, func(r *Row) error {
+			defer func() { i++ }() // increment i after each callback iteration
+			resultRow := &SearchResultRow{ListID: list, Row: r, Match: ""}
+			if regex != nil {
+				resultRow.Match = regex.FindString(r.Value.String())
+				if (excludeMatches && resultRow.Match != "") || (!excludeMatches && resultRow.Match == "") {
+					return nil
+				}
+				out.TotalResults++
+			} else {
+				out.TotalResults++
+			}
+			if i >= offset && len(out.Rows) < numRowsPerPage {
+				resultRow.Row.Value = autoFormatRowValue(resultRow.Row.Value)
+				out.Rows = append(out.Rows, resultRow)
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return out, nil
+}
+
+func autoFormatRowValue(v RowValue) RowValue {
+	if json.Valid(v) {
+		buf := &bytes.Buffer{}
+		err := json.Indent(buf, v, "", "\t")
+		if err != nil {
+			panic(err)
+		}
+		return buf.Bytes()
+	}
+	return v
 }

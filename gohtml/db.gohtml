@@ -1,0 +1,52 @@
+{{ define "title" }}DB buckets{{ end }}
+{{ define "main" }}
+<main>
+	<h1>DB buckets</h1>
+
+	{{ range $name, $info := .Local.Buckets }}
+	<section class="tile">
+		<h2>{{ $name }}</h2>
+		<br>
+		<table cellspacing="0">
+			<tbody>
+				<tr>
+					<td>Number of rows</td>
+					<td>{{ $info.NumRows }}</td>
+				</tr>
+				<tr>
+					<td>Size</td>
+					<td>{{ $info.TotalRowSize }} bytes</td>
+				</tr>
+				<tr>
+					<td>Avg row size</td>
+					<td>{{ $info.AvgRowSize }} bytes</td>
+				</tr>
+			</tbody>
+		</table>
+		<br>
+		<menu type="toolbar">
+			<li>
+				<a role="button" href="/db/bucket/new-row?id={{ QueryEscape $name }}">
+					Add a new row
+				</a>
+			</li>
+			<li>
+				<a role="button" href="/db/search?list={{ QueryEscape $name }}">
+					Search
+				</a>
+			</li>
+			<li>
+				<form action="/db/bucket/delete" method="post">
+					<input type="hidden" name="id" value="{{ $name }}">
+					<input type="submit" value="Delete this bucket" style="background-color: var(--color-danger);">
+				</form>
+			</li>
+		</menu>
+	</section>
+
+	{{ else }}
+	<p>No buckets to show yet</p>
+	{{ end }}
+	</ul>
+</main>
+{{ end }}

@@ -20,7 +20,7 @@ func AccessLoggingMiddleware(logger logs.Logger) func(http.Handler) http.Handler
 			dur := time.Since(before)                        // calculate duration to handle request
 
 			// Log
-			logstr := fmt.Sprintf("%d %-4s %4dμs %s", resrec.statusCode, r.Method, dur.Microseconds(), r.URL.Path)
+			logstr := fmt.Sprintf("%d %-4s %5dμs %s", resrec.statusCode, r.Method, dur.Microseconds(), r.URL.Path)
 			logger.Log(logstr)
 		})
 	}

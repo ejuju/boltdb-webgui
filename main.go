@@ -1,12 +1,17 @@
 package main
 
 import (
+	"log"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/ejuju/boltdb-webgui/internal"
 )
+
+func init() {
+	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+}
 
 func main() {
 	fpath := "test.boltdb"

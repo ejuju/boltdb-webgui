@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 
 	"github.com/ejuju/boltdb-webgui/pkg/boltutil"
@@ -41,11 +42,11 @@ func (s *Server) NewHTTPHandler() http.Handler {
 	router := mux.NewRouter()
 	router.PathPrefix("/public/").Handler(staticFileServer)
 	router.HandleFunc("/", serveHomePage(s)).Methods(http.MethodGet)
-	router.HandleFunc("/db/buckets", serveDBBucketsPage(s)).Methods(http.MethodGet)
+	router.HandleFunc("/db", serveDBPage(s)).Methods(http.MethodGet)
 	router.HandleFunc("/db/stats", serveDBStatsPage(s)).Methods(http.MethodGet)
 	router.HandleFunc("/db/new-bucket", serveDBNewBucketPage(s)).Methods(http.MethodGet)
 	router.HandleFunc("/db/new-bucket", handleDBNewBucketForm(s)).Methods(http.MethodPost)
-	router.HandleFunc("/db/bucket", serveBucketPage(s)).Methods(http.MethodGet)
+	router.HandleFunc("/db/search", serveDBSearchPage(s)).Methods(http.MethodGet)
 	router.HandleFunc("/db/bucket/new-row", serveDBBucketNewRowPage(s)).Methods(http.MethodGet)
 	router.HandleFunc("/db/bucket/new-row", handleDBBucketNewRowForm(s)).Methods(http.MethodPost)
 	router.HandleFunc("/db/bucket/edit-row", serveDBBucketEditRowPage(s)).Methods(http.MethodGet)
@@ -81,8 +82,8 @@ func serveHomePage(s *Server) http.HandlerFunc {
 	}
 }
 
-func serveDBBucketsPage(s *Server) http.HandlerFunc {
-	tmpl := mustParseTmpl(layoutTmpls, tmplDirPath, "db-buckets.gohtml")
+func serveDBPage(s *Server) http.HandlerFunc {
+	tmpl := mustParseTmpl(layoutTmpls, tmplDirPath, "db.gohtml")
 	return func(w http.ResponseWriter, r *http.Request) {
 		info, err := kvstore.GetDBInfo(s.db)
 		if err != nil {
@@ -98,8 +99,7 @@ func serveDBNewBucketPage(s *Server) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		s.respondPageOK(w, r, tmpl, map[string]any{
 			"Breadcrumbs": Breadcrumbs{
-				{Name: "DB"},
-				{Name: "Buckets", Path: "/db/buckets"},
+				{Name: "DB buckets", Path: "/db"},
 				{Name: "Add new bucket"},
 			},
 		})
@@ -118,51 +118,6 @@ func serveDBStatsPage(s *Server) http.HandlerFunc {
 	}
 }
 
-func serveBucketPage(s *Server) http.HandlerFunc {
-	tmpl := mustParseTmpl(layoutTmpls, tmplDirPath, "db-bucket.gohtml")
-	const numRowsPerPage = 10
-	return func(w http.ResponseWriter, r *http.Request) {
-		urlQuery := r.URL.Query()
-		bucketID, err := url.QueryUnescape(urlQuery.Get("id"))
-		if err != nil {
-			s.respondErrorPageHTMLTmpl(w, r, http.StatusBadRequest, err)
-			return
-		}
-		page := urlQuery.Get("page")
-		if page == "" {
-			page = "0"
-		}
-		pageNum, err := strconv.Atoi(page)
-		if err != nil {
-			s.respondErrorPageHTMLTmpl(w, r, http.StatusNotFound, err)
-			return
-		}
-
-		info, err := kvstore.GetListInfo(s.db, bucketID)
-		if err != nil {
-			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
-			return
-		}
-		rows, err := s.db.ReadRowPage(bucketID, pageNum, numRowsPerPage)
-		if err != nil {
-			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
-			return
-		}
-
-		s.respondPageOK(w, r, tmpl, map[string]any{
-			"Breadcrumbs": Breadcrumbs{
-				{Name: "DB"},
-				{Name: "Buckets", Path: "/db/buckets"},
-				{Name: bucketID},
-			},
-			"ID":    bucketID,
-			"Rows":  rows,
-			"Page":  pageNum,
-			"Pages": make([]struct{}, 1+info.NumRows/numRowsPerPage),
-		})
-	}
-}
-
 func handleDBBucketDeleteForm(s *Server) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		err := r.ParseForm()
@@ -178,7 +133,7 @@ func handleDBBucketDeleteForm(s *Server) http.HandlerFunc {
 		} else if err != nil {
 			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
 		} else {
-			http.Redirect(w, r, "/db/buckets", http.StatusSeeOther)
+			http.Redirect(w, r, "/db", http.StatusSeeOther)
 		}
 	}
 }
@@ -280,9 +235,9 @@ func serveDBBucketEditRowPage(s *Server) http.HandlerFunc {
 		} else {
 			s.respondPageOK(w, r, tmpl, map[string]any{
 				"Breadcrumbs": Breadcrumbs{
-					{Name: "DB"},
-					{Name: "Buckets", Path: "/db/buckets"},
-					{Name: id, Path: "/db/bucket?id=" + url.QueryEscape(id)},
+
+					{Name: "DB buckets", Path: "/db"},
+					{Name: id, Path: "/db/search?list=" + url.QueryEscape(id)},
 					{Name: key},
 				},
 				"BucketID": id,
@@ -311,5 +266,92 @@ func handleDBBucketEditRowForm(s *Server) http.HandlerFunc {
 		} else {
 			http.Redirect(w, r, "/db/bucket?id="+url.QueryEscape(id), http.StatusSeeOther)
 		}
+	}
+}
+
+func serveDBSearchPage(s *Server) http.HandlerFunc {
+	tmpl := mustParseTmpl(layoutTmpls, tmplDirPath, "db-search.gohtml")
+	const numRowsPerPage = 10
+	return func(w http.ResponseWriter, r *http.Request) {
+		err := r.ParseForm()
+		if err != nil {
+			s.respondErrorPageHTMLTmpl(w, r, http.StatusBadRequest, err)
+			return
+		}
+		selectedLists := r.Form["list"]
+		query := r.FormValue("query")
+		exclude := r.FormValue("exclude")
+		if exclude == "" {
+			exclude = "false"
+		}
+		excludeQueryMatches, err := strconv.ParseBool(exclude)
+		if err != nil {
+			s.respondErrorPageHTMLTmpl(w, r, http.StatusBadRequest, err)
+			return
+		}
+		page := r.FormValue("page")
+		pageIndex := 1
+		if page != "" && page != "1" {
+			pageIndex, err = strconv.Atoi(page)
+			if err != nil {
+				s.respondErrorPageHTMLTmpl(w, r, http.StatusBadRequest, err)
+				return
+			}
+		}
+
+		var regex *regexp.Regexp
+		if query != "" {
+			regex, err = regexp.Compile(query)
+			if err != nil {
+				s.respondErrorPageHTMLTmpl(w, r, http.StatusBadRequest, err)
+				return
+			}
+		}
+
+		lists := map[string]bool{}
+		err = s.db.ReadEachList(func(name string) error {
+			// Set "checked" to true
+			// if bucket is selected or if no bucket has been selected at all
+			lists[name] = false
+			if len(selectedLists) == 0 {
+				lists[name] = true
+			}
+			for _, selectedName := range selectedLists {
+				if selectedName == name {
+					lists[name] = true
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
+			return
+		}
+
+		result, err := kvstore.Search(s.db, selectedLists, regex, excludeQueryMatches, pageIndex-1, numRowsPerPage)
+		if errors.Is(err, kvstore.ErrNotFound) {
+			s.respondErrorPageHTMLTmpl(w, r, http.StatusBadRequest, err)
+			return
+		} else if err != nil {
+			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
+			return
+		}
+
+		tmplData := map[string]any{
+			"Result":        result,
+			"Lists":         lists,
+			"SelectedLists": selectedLists,
+			"Query":         query,
+			"Exclude":       excludeQueryMatches,
+			"PageIndex":     pageIndex,
+			"Pages":         make([]struct{}, 1+result.TotalResults/numRowsPerPage),
+		}
+		if len(selectedLists) == 1 {
+			tmplData["Breadcrumbs"] = Breadcrumbs{
+				{Name: "DB buckets", Path: "/db"},
+				{Name: selectedLists[0]},
+			}
+		}
+		s.respondPageOK(w, r, tmpl, tmplData)
 	}
 }

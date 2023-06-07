@@ -11,6 +11,7 @@
 		--color-txt-2: hsl(0, 0%, 75%);
 		--color-txt-3: hsl(0, 0%, 65%);
 
+		--color-accent: hsl(216, 50%, 50%);
 		--color-danger: rgb(255, 0, 0);
 		--color-neutral: rgb(70, 70, 70);
 
@@ -60,40 +61,57 @@
 	}
 
 	input[type="text"],
-	textarea {
-		padding: 4px;
-		padding-left: 8px;
+	textarea,
+	select {
+		padding: 8px;
 		border-radius: var(--border-radius);
 		border: 1px solid var(--color-txt-3);
 	}
 
 	input[type="text"]:focus,
-	textarea:focus {
-		outline: solid 4px var(--color-neutral);
+	input[type="checkbox"]:focus,
+	input[type="radio"]:focus,
+	textarea:focus,
+	select:focus {
+		outline: solid 4px var(--color-accent);
 	}
 
 	textarea {
 		resize: vertical;
+		width: 100%;
 	}
 
 	form.vertical {
 		display: flex;
 		flex-direction: column;
-		gap: 1.5rem;
+		gap: 20px;
 		max-width: 400px;
 		width: 100%;
 		margin: 0 auto;
 	}
 
-	form.vertical label {
+	form.vertical>label {
 		display: flex;
 		flex-direction: column;
-		gap: 0.25rem;
+		gap: 4px;
 	}
 
 	form.vertical>h1 {
 		margin-top: 1em;
 		text-align: center;
+	}
+
+	form fieldset {
+		border: none;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		padding-left: 12px;
+		border-left: 1px solid var(--color-txt-3);
+	}
+
+	form legend {
+		float: left;
 	}
 
 	button,
@@ -102,10 +120,11 @@
 		text-decoration: underline;
 		cursor: pointer;
 		border: none;
-		background-color: blue;
+		background-color: var(--color-accent);
 		padding: 12px 16px;
 		border-radius: var(--border-radius);
 		font-weight: bold;
+		align-self: flex-start;
 	}
 
 	menu[type="toolbar"] {
@@ -127,6 +146,18 @@
 
 	h2 {
 		font-size: 1.125rem;
+	}
+
+	table {
+		background-color: var(--color-bg-1);
+		border-collapse: collapse;
+	}
+
+	table td {
+		background-color: var(--color-bg-2);
+		border: 1px solid var(--color-bg-3);
+		border-radius: var(--border-radius);
+		padding: 4px 16px;
 	}
 
 	.tile {
