@@ -5,7 +5,7 @@
 
 	<ul>
 		{{ range $name, $info := .Local.Buckets }}
-		<li><a href="/db/bucket?id={{ $name }}">{{ $name }} ({{ $info.NumRows }} rows)</a></li>
+		<li><a href="/db/bucket?id={{ QueryEscape $name }}">{{ $name }} ({{ $info.NumRows }} rows)</a></li>
 		{{ else }}
 		<p>No buckets to show yet</p>
 		{{ end }}

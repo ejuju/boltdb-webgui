@@ -7,17 +7,16 @@ import (
 	"net/url"
 	"os"
 	"strconv"
-	"time"
 
 	"github.com/ejuju/boltdb-webgui/pkg/boltutil"
 	"github.com/ejuju/boltdb-webgui/pkg/httputils"
+	"github.com/ejuju/boltdb-webgui/pkg/kvstore"
 	"github.com/ejuju/boltdb-webgui/pkg/logs"
 	"github.com/gorilla/mux"
-	"go.etcd.io/bbolt"
 )
 
 type Server struct {
-	db     *bbolt.DB
+	db     kvstore.DB
 	logger logs.Logger
 }
 
@@ -26,10 +25,7 @@ func NewServer(fpath string) *Server {
 	logger := logs.NewTextLogger(os.Stderr)
 
 	// Open DB file
-	db, err := bbolt.Open(fpath, os.ModePerm, &bbolt.Options{Timeout: 2 * time.Second})
-	if err != nil {
-		panic(fmt.Errorf("open DB file: %w", err))
-	}
+	db := boltutil.NewKeyValueDB(fpath)
 
 	return &Server{
 		db:     db,
@@ -47,12 +43,12 @@ func (s *Server) NewHTTPHandler() http.Handler {
 	router.HandleFunc("/", serveHomePage(s)).Methods(http.MethodGet)
 	router.HandleFunc("/db/buckets", serveDBBucketsPage(s)).Methods(http.MethodGet)
 	router.HandleFunc("/db/stats", serveDBStatsPage(s)).Methods(http.MethodGet)
-	router.HandleFunc("/db/new-bucket", handleDBNewBucketPage(s)).Methods(http.MethodGet)
+	router.HandleFunc("/db/new-bucket", serveDBNewBucketPage(s)).Methods(http.MethodGet)
 	router.HandleFunc("/db/new-bucket", handleDBNewBucketForm(s)).Methods(http.MethodPost)
 	router.HandleFunc("/db/bucket", serveBucketPage(s)).Methods(http.MethodGet)
-	router.HandleFunc("/db/bucket/new-row", handleDBBucketNewRowPage(s)).Methods(http.MethodGet)
+	router.HandleFunc("/db/bucket/new-row", serveDBBucketNewRowPage(s)).Methods(http.MethodGet)
 	router.HandleFunc("/db/bucket/new-row", handleDBBucketNewRowForm(s)).Methods(http.MethodPost)
-	router.HandleFunc("/db/bucket/edit-row", handleDBBucketEditRowPage(s)).Methods(http.MethodGet)
+	router.HandleFunc("/db/bucket/edit-row", serveDBBucketEditRowPage(s)).Methods(http.MethodGet)
 	router.HandleFunc("/db/bucket/edit-row", handleDBBucketEditRowForm(s)).Methods(http.MethodPost)
 	router.HandleFunc("/db/bucket/delete", handleDBBucketDeleteForm(s)).Methods(http.MethodPost)
 	router.HandleFunc("/db/bucket/delete-row", handleDBBucketDeleteRowForm(s)).Methods(http.MethodPost)
@@ -60,9 +56,7 @@ func (s *Server) NewHTTPHandler() http.Handler {
 
 	// Register global middleware
 	var routerWithMW http.Handler = router
-	// First, log incoming HTTP request
 	routerWithMW = httputils.AccessLoggingMiddleware(s.logger)(routerWithMW)
-	// Finally, recover from any eventual panic
 	routerWithMW = httputils.PanicRecoveryMiddleware(s.logger, onPanicFunc(s))(routerWithMW)
 
 	return routerWithMW
@@ -83,27 +77,23 @@ func handleNotFound(s *Server) http.HandlerFunc {
 func serveHomePage(s *Server) http.HandlerFunc {
 	tmpl := mustParseTmpl(layoutTmpls, tmplDirPath, "home.gohtml")
 	return func(w http.ResponseWriter, r *http.Request) {
-		s.respondPageOK(w, r, tmpl, map[string]any{
-			"FilePath": s.db.Path(),
-		})
+		s.respondPageOK(w, r, tmpl, map[string]any{})
 	}
 }
 
 func serveDBBucketsPage(s *Server) http.HandlerFunc {
 	tmpl := mustParseTmpl(layoutTmpls, tmplDirPath, "db-buckets.gohtml")
 	return func(w http.ResponseWriter, r *http.Request) {
-		info, err := boltutil.OpenTxAndGetDBInfo(s.db)
+		info, err := kvstore.GetDBInfo(s.db)
 		if err != nil {
 			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
 			return
 		}
-		s.respondPageOK(w, r, tmpl, map[string]any{
-			"Buckets": info.Buckets,
-		})
+		s.respondPageOK(w, r, tmpl, map[string]any{"Buckets": info.Lists})
 	}
 }
 
-func handleDBNewBucketPage(s *Server) http.HandlerFunc {
+func serveDBNewBucketPage(s *Server) http.HandlerFunc {
 	tmpl := mustParseTmpl(layoutTmpls, tmplDirPath, "db-new-bucket.gohtml")
 	return func(w http.ResponseWriter, r *http.Request) {
 		s.respondPageOK(w, r, tmpl, map[string]any{
@@ -119,7 +109,7 @@ func handleDBNewBucketPage(s *Server) http.HandlerFunc {
 func serveDBStatsPage(s *Server) http.HandlerFunc {
 	tmpl := mustParseTmpl(layoutTmpls, tmplDirPath, "db-stats.gohtml")
 	return func(w http.ResponseWriter, r *http.Request) {
-		info, err := boltutil.OpenTxAndGetDBInfo(s.db)
+		info, err := kvstore.GetDBInfo(s.db)
 		if err != nil {
 			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
 			return
@@ -133,7 +123,11 @@ func serveBucketPage(s *Server) http.HandlerFunc {
 	const numRowsPerPage = 10
 	return func(w http.ResponseWriter, r *http.Request) {
 		urlQuery := r.URL.Query()
-		bucketID := urlQuery.Get("id")
+		bucketID, err := url.QueryUnescape(urlQuery.Get("id"))
+		if err != nil {
+			s.respondErrorPageHTMLTmpl(w, r, http.StatusBadRequest, err)
+			return
+		}
 		page := urlQuery.Get("page")
 		if page == "" {
 			page = "0"
@@ -144,23 +138,12 @@ func serveBucketPage(s *Server) http.HandlerFunc {
 			return
 		}
 
-		var info *boltutil.BucketInfo
-		var rows []*boltutil.Row
-		err = s.db.View(func(tx *bbolt.Tx) error {
-			b, err := boltutil.FindBucket(tx, []byte(bucketID))
-			if err != nil {
-				return err
-			}
-			info, err = boltutil.GetBucketInfo(b)
-			if err != nil {
-				return err
-			}
-			rows, err = boltutil.ReadBucketRowPage(b, pageNum, numRowsPerPage)
-			if err != nil {
-				return err
-			}
-			return nil
-		})
+		info, err := kvstore.GetListInfo(s.db, bucketID)
+		if err != nil {
+			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
+			return
+		}
+		rows, err := s.db.ReadRowPage(bucketID, pageNum, numRowsPerPage)
 		if err != nil {
 			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
 			return
@@ -189,22 +172,14 @@ func handleDBBucketDeleteForm(s *Server) http.HandlerFunc {
 		}
 		id := r.FormValue("id")
 
-		err = s.db.Update(func(tx *bbolt.Tx) error {
-			_, err := boltutil.FindBucket(tx, []byte(id))
-			if err != nil {
-				return err
-			}
-			return tx.DeleteBucket([]byte(id))
-		})
-		if errors.Is(err, boltutil.ErrNotFound) {
+		err = s.db.DeleteList(id)
+		if errors.Is(err, kvstore.ErrNotFound) {
 			s.respondErrorPageHTMLTmpl(w, r, http.StatusNotFound, err)
-			return
 		} else if err != nil {
 			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
-			return
+		} else {
+			http.Redirect(w, r, "/db/buckets", http.StatusSeeOther)
 		}
-
-		http.Redirect(w, r, "/db/buckets", http.StatusSeeOther)
 	}
 }
 
@@ -216,47 +191,31 @@ func handleDBBucketDeleteRowForm(s *Server) http.HandlerFunc {
 			return
 		}
 		id := r.FormValue("id")
-		key := r.FormValue("key")
+		err = s.db.DeleteRow(id, r.FormValue("key"))
 
-		err = s.db.Update(func(tx *bbolt.Tx) error {
-			b, err := boltutil.FindBucket(tx, []byte(id))
-			if err != nil {
-				return err
-			}
-			return boltutil.DeleteRow(b, []byte(key))
-		})
-		if errors.Is(err, boltutil.ErrNotFound) {
+		if errors.Is(err, kvstore.ErrNotFound) {
 			s.respondErrorPageHTMLTmpl(w, r, http.StatusNotFound, err)
-			return
 		} else if err != nil {
 			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
-			return
+		} else {
+			http.Redirect(w, r, "/db/bucket?id="+url.QueryEscape(id), http.StatusSeeOther)
 		}
-
-		http.Redirect(w, r, "/db/bucket?id="+url.QueryEscape(id), http.StatusSeeOther)
 	}
 }
 
-func handleDBBucketNewRowPage(s *Server) http.HandlerFunc {
+func serveDBBucketNewRowPage(s *Server) http.HandlerFunc {
 	tmpl := mustParseTmpl(layoutTmpls, tmplDirPath, "db-bucket-new-row.gohtml")
 	return func(w http.ResponseWriter, r *http.Request) {
 		bucketName := r.URL.Query().Get("id")
-		autoKey := uint64(0)
-		err := s.db.Update(func(tx *bbolt.Tx) error {
-			b, err := boltutil.FindBucket(tx, []byte(bucketName))
-			if err != nil {
-				return err
-			}
-			autoKey, err = b.NextSequence()
-			return err
-		})
+		numRows, err := s.db.NumRows(bucketName)
 		if err != nil {
 			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
 			return
 		}
+
 		s.respondPageOK(w, r, tmpl, map[string]any{
 			"BucketID": bucketName,
-			"AutoKey":  autoKey,
+			"AutoKey":  numRows + 1,
 		})
 	}
 }
@@ -273,23 +232,14 @@ func handleDBBucketNewRowForm(s *Server) http.HandlerFunc {
 		value := r.FormValue("value")
 		bucketID := r.FormValue("id")
 
-		// Write value to bucket key
-		err = s.db.Update(func(tx *bbolt.Tx) error {
-			b, err := boltutil.FindBucket(tx, []byte(bucketID))
-			if err != nil {
-				return err
-			}
-			return boltutil.CreateRow(b, []byte(key), []byte(value))
-		})
-		if errors.Is(err, boltutil.ErrNotFound) {
+		err = s.db.CreateRow(bucketID, &kvstore.Row{Key: kvstore.RowKey(key), Value: kvstore.RowValue(value)})
+		if errors.Is(err, kvstore.ErrNotFound) {
 			s.respondErrorPageHTMLTmpl(w, r, http.StatusNotFound, err)
-			return
 		} else if err != nil {
 			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
-			return
+		} else {
+			http.Redirect(w, r, "/db/bucket?id="+url.QueryEscape(bucketID), http.StatusSeeOther)
 		}
-
-		http.Redirect(w, r, "/db/bucket?id="+url.QueryEscape(bucketID), http.StatusSeeOther)
 	}
 }
 
@@ -303,54 +253,42 @@ func handleDBNewBucketForm(s *Server) http.HandlerFunc {
 		}
 		name := r.FormValue("name")
 
-		// Create bucket in DB
-		err = s.db.Update(func(tx *bbolt.Tx) error { _, err := tx.CreateBucket([]byte(name)); return err })
-		if err != nil {
+		// Create bucket in DB and redirect to newly created bucket on success
+		err = s.db.CreateList(name)
+		if errors.Is(err, kvstore.ErrAlreadyExists) {
 			s.respondErrorPageHTMLTmpl(w, r, http.StatusBadRequest, err)
-			return
+		} else if err != nil {
+			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
+		} else {
+			http.Redirect(w, r, "/db/bucket?id="+name, http.StatusSeeOther)
 		}
-
-		// Redirect to newly created bucket
-		http.Redirect(w, r, "/db/bucket?id="+name, http.StatusSeeOther)
 	}
 }
 
-func handleDBBucketEditRowPage(s *Server) http.HandlerFunc {
+func serveDBBucketEditRowPage(s *Server) http.HandlerFunc {
 	tmpl := mustParseTmpl(layoutTmpls, tmplDirPath, "db-bucket-edit-row.gohtml")
 	return func(w http.ResponseWriter, r *http.Request) {
 		urlQueryParams := r.URL.Query()
 		id := urlQueryParams.Get("id")
 		key := urlQueryParams.Get("key")
-		var value []byte
 
-		err := s.db.View(func(tx *bbolt.Tx) error {
-			b, err := boltutil.FindBucket(tx, []byte(id))
-			if err != nil {
-				return err
-			}
-			value, err = boltutil.ReadRow(b, []byte(key))
-			return err
-		})
-		if errors.Is(err, boltutil.ErrNotFound) {
-			s.respondErrorPageHTMLTmpl(w, r, http.StatusBadRequest, err)
-			return
-		}
-		if err != nil {
+		row, err := s.db.ReadRow(id, key)
+		if errors.Is(err, kvstore.ErrNotFound) {
+			s.respondErrorPageHTMLTmpl(w, r, http.StatusNotFound, err)
+		} else if err != nil {
 			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
-			return
+		} else {
+			s.respondPageOK(w, r, tmpl, map[string]any{
+				"Breadcrumbs": Breadcrumbs{
+					{Name: "DB"},
+					{Name: "Buckets", Path: "/db/buckets"},
+					{Name: id, Path: "/db/bucket?id=" + url.QueryEscape(id)},
+					{Name: key},
+				},
+				"BucketID": id,
+				"Row":      row,
+			})
 		}
-
-		s.respondPageOK(w, r, tmpl, map[string]any{
-			"Breadcrumbs": Breadcrumbs{
-				{Name: "DB"},
-				{Name: "Buckets", Path: "/db/buckets"},
-				{Name: id, Path: "/db/bucket?id=" + id},
-				{Name: key},
-			},
-			"BucketID": id,
-			"Key":      key,
-			"Value":    string(value),
-		})
 	}
 }
 
@@ -365,21 +303,13 @@ func handleDBBucketEditRowForm(s *Server) http.HandlerFunc {
 		key := r.FormValue("key")
 		value := r.FormValue("value")
 
-		err = s.db.Update(func(tx *bbolt.Tx) error {
-			b, err := boltutil.FindBucket(tx, []byte(id))
-			if err != nil {
-				return err
-			}
-			return boltutil.UpdateRow(b, []byte(key), []byte(value))
-		})
-		if errors.Is(err, boltutil.ErrNotFound) {
+		err = s.db.UpdateRow(id, key, value)
+		if errors.Is(err, kvstore.ErrNotFound) {
 			s.respondErrorPageHTMLTmpl(w, r, http.StatusNotFound, err)
-			return
 		} else if err != nil {
 			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
-			return
+		} else {
+			http.Redirect(w, r, "/db/bucket?id="+url.QueryEscape(id), http.StatusSeeOther)
 		}
-
-		http.Redirect(w, r, "/db/bucket?id="+url.QueryEscape(id), http.StatusSeeOther)
 	}
 }

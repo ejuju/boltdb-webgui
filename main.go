@@ -12,10 +12,10 @@ func main() {
 	httpServer := &http.Server{
 		Addr:              ":8080",
 		Handler:           server.NewHTTPHandler(),
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      30 * time.Second,
+		ReadTimeout:       20 * time.Second,
+		WriteTimeout:      20 * time.Second,
+		ReadHeaderTimeout: 20 * time.Second,
 		IdleTimeout:       30 * time.Second,
-		ReadHeaderTimeout: 30 * time.Second,
 		MaxHeaderBytes:    8000,
 	}
 	err := httpServer.ListenAndServe()

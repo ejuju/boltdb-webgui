@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/ejuju/boltdb-webgui/pkg/kvstore"
 	"go.etcd.io/bbolt"
 )
 
@@ -43,6 +44,8 @@ func (db *KeyValueDB) DiskSize() (uint64, error) {
 	})
 }
 
+func (db *KeyValueDB) DiskPath() string { return db.f.Path() }
+
 func (db *KeyValueDB) NumLists() (int, error) {
 	out := 0
 	return out, db.f.View(func(tx *bbolt.Tx) error {
@@ -53,7 +56,7 @@ func (db *KeyValueDB) NumLists() (int, error) {
 func (db *KeyValueDB) NumRows(list string) (uint64, error) {
 	out := uint64(0)
 	return out, db.f.View(func(tx *bbolt.Tx) error {
-		b, err := FindBucket(tx, []byte(list))
+		b, err := findBucket(tx, []byte(list))
 		if err != nil {
 			return err
 		}
@@ -64,6 +67,9 @@ func (db *KeyValueDB) NumRows(list string) (uint64, error) {
 
 func (db *KeyValueDB) CreateList(name string) error {
 	return db.f.Update(func(tx *bbolt.Tx) error {
+		if tx.Bucket([]byte(name)) != nil {
+			return kvstore.NewErrAlreadyExists(name)
+		}
 		_, err := tx.CreateBucket([]byte(name))
 		return err
 	})
@@ -75,7 +81,7 @@ func (db *KeyValueDB) DeleteList(name string) error {
 	})
 }
 
-func (db *KeyValueDB) ForEachList(callback func(string) error) error {
+func (db *KeyValueDB) ReadEachList(callback func(string) error) error {
 	return db.f.View(func(tx *bbolt.Tx) error {
 		return tx.ForEach(func(name []byte, _ *bbolt.Bucket) error {
 			return callback(string(name))
@@ -83,42 +89,71 @@ func (db *KeyValueDB) ForEachList(callback func(string) error) error {
 	})
 }
 
-func (db *KeyValueDB) CreateRow(list string, row *Row) error {
+func (db *KeyValueDB) CreateRow(list string, row *kvstore.Row) error {
 	return db.f.Update(func(tx *bbolt.Tx) error {
-		b, err := FindBucket(tx, []byte(list))
+		b, err := findBucket(tx, []byte(list))
 		if err != nil {
 			return err
 		}
-		err = CheckRowKeyIsAvailable(b, row.Key)
-		if err != nil {
-			return err
+		if b.Get(row.Key) != nil {
+			return kvstore.NewErrAlreadyExists(string(row.Key))
 		}
 		return b.Put(row.Key, row.Value)
 	})
 }
 
-func (db *KeyValueDB) ReadRow(list string, key RowKey) (*Row, error) {
-	out := &Row{Key: key}
+func (db *KeyValueDB) ReadRow(list string, key string) (*kvstore.Row, error) {
+	out := &kvstore.Row{Key: []byte(key)}
 	return out, db.f.View(func(tx *bbolt.Tx) error {
-		b, err := FindBucket(tx, []byte(list))
+		_, v, err := findBucketRow(tx, []byte(list), []byte(key))
 		if err != nil {
 			return err
 		}
-		out.Value, err = FindRow(b, []byte(key))
+		out.Value = v
+		return nil
+	})
+}
+
+func (db *KeyValueDB) ReadRowPage(list string, pageIndex, numRowsPerPage int) ([]*kvstore.Row, error) {
+	var out []*kvstore.Row
+	return out, db.f.View(func(tx *bbolt.Tx) error {
+		b, err := findBucket(tx, []byte(list))
 		if err != nil {
 			return err
+		}
+		offset := pageIndex * numRowsPerPage
+		c := b.Cursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			for i := 0; i < offset; i++ {
+				k, v = c.Next()
+				if k == nil {
+					break
+				}
+			}
+			if len(out) == numRowsPerPage {
+				break
+			}
+			out = append(out, &kvstore.Row{Key: k, Value: v})
 		}
 		return nil
 	})
 }
 
-func (db *KeyValueDB) UpdateRow(list string, key string, newValue string) error {
-	return db.f.Update(func(tx *bbolt.Tx) error {
-		b, err := FindBucket(tx, []byte(list))
+func (db *KeyValueDB) ReadEachRow(list string, callback func(*kvstore.Row) error) error {
+	return db.f.View(func(tx *bbolt.Tx) error {
+		b, err := findBucket(tx, []byte(list))
 		if err != nil {
 			return err
 		}
-		_, err = FindRow(b, []byte(key))
+		return b.ForEach(func(k, v []byte) error {
+			return callback(&kvstore.Row{Key: k, Value: v})
+		})
+	})
+}
+
+func (db *KeyValueDB) UpdateRow(list string, key string, newValue string) error {
+	return db.f.Update(func(tx *bbolt.Tx) error {
+		b, _, err := findBucketRow(tx, []byte(list), []byte(key))
 		if err != nil {
 			return err
 		}
@@ -127,11 +162,7 @@ func (db *KeyValueDB) UpdateRow(list string, key string, newValue string) error 
 }
 func (db *KeyValueDB) DeleteRow(list string, key string) error {
 	return db.f.Update(func(tx *bbolt.Tx) error {
-		b, err := FindBucket(tx, []byte(list))
-		if err != nil {
-			return err
-		}
-		_, err = FindRow(b, []byte(key))
+		b, _, err := findBucketRow(tx, []byte(list), []byte(key))
 		if err != nil {
 			return err
 		}
@@ -139,14 +170,22 @@ func (db *KeyValueDB) DeleteRow(list string, key string) error {
 	})
 }
 
-func (db *KeyValueDB) ForEachRow(list string, callback func(*Row) error) error {
-	return db.f.Update(func(tx *bbolt.Tx) error {
-		b, err := FindBucket(tx, []byte(list))
-		if err != nil {
-			return err
-		}
-		return b.ForEach(func(k, v []byte) error {
-			return callback(&Row{Key: k, Value: v})
-		})
-	})
+func findBucket(tx *bbolt.Tx, name []byte) (*bbolt.Bucket, error) {
+	b := tx.Bucket(name)
+	if b == nil {
+		return nil, kvstore.NewErrNotFound(string(name))
+	}
+	return b, nil
+}
+
+func findBucketRow(tx *bbolt.Tx, bucketName, key []byte) (*bbolt.Bucket, []byte, error) {
+	b, err := findBucket(tx, bucketName)
+	if err != nil {
+		return nil, nil, err
+	}
+	v := b.Get([]byte(key))
+	if v == nil {
+		return b, nil, kvstore.NewErrNotFound(string(key))
+	}
+	return b, v, nil
 }

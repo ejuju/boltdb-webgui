@@ -35,8 +35,12 @@ func (s *Server) respondHTMLTmpl(
 	data any,
 ) {
 	w.WriteHeader(statusCode)
+	if data == nil {
+		// Required to allow optional fields
+		data = map[string]any{}
+	}
 	err := t.ExecuteTemplate(w, tname, map[string]any{
-		"DBPath":  s.db.Path(),
+		"DBPath":  s.db.DiskPath(),
 		"Request": r,
 		"Local":   data,
 	})

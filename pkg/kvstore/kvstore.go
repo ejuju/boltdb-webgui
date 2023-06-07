@@ -1,24 +1,37 @@
 package kvstore
 
+import (
+	"errors"
+	"fmt"
+)
+
 type DB interface {
 	// General information
 	Size() (uint64, error)     // size of DB according to DB
 	DiskSize() (uint64, error) // size of disk file(s)
+	DiskPath() string
 	NumLists() (int, error)
 	NumRows(list string) (uint64, error)
 
 	// List operations
 	CreateList(name string) error
+	ReadEachList(callback func(string) error) error
 	DeleteList(name string) error
-	ForEachList(callback func(string) error) error
 
 	// List row operations
 	CreateRow(list string, row *Row) error
 	ReadRow(list string, key string) (*Row, error)
+	ReadRowPage(list string, pageIndex, numRowsPerPage int) ([]*Row, error)
+	ReadEachRow(list string, callback func(*Row) error) error
 	UpdateRow(list string, key string, newValue string) error
 	DeleteRow(list string, name string) error
-	ForEachRow(list string, callback func(*Row) error) error
 }
+
+var ErrAlreadyExists = errors.New("already exists")
+var ErrNotFound = errors.New("not found")
+
+func NewErrNotFound(id string) error      { return fmt.Errorf("%q %w", id, ErrNotFound) }
+func NewErrAlreadyExists(id string) error { return fmt.Errorf("%q %w", id, ErrAlreadyExists) }
 
 // Row represents a key-value pair in a list.
 type Row struct {
@@ -67,7 +80,7 @@ func GetDBInfo(db DB) (*DBInfo, error) {
 	}
 
 	// Get bucket stats for each bucket
-	err = db.ForEachList(func(listName string) error {
+	err = db.ReadEachList(func(listName string) error {
 		info.NumLists++
 		listInfo, err := GetListInfo(db, listName)
 		if err != nil {
@@ -87,7 +100,7 @@ func GetListInfo(db DB, listName string) (*ListInfo, error) {
 	info := &ListInfo{}
 
 	// Calculate total row size
-	err := db.ForEachRow(listName, func(r *Row) error {
+	err := db.ReadEachRow(listName, func(r *Row) error {
 		info.TotalRowSize += r.Size()
 		return nil
 	})

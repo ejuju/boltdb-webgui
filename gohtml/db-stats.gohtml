@@ -4,16 +4,16 @@
 	<h1>Stats</h1>
 
 	<section>
-		<p>Total file size: <strong>{{ .Local.Info.FileSize }} GB</strong></p>
+		<p>Total file size: <strong>{{ .Local.Info.DiskSize }} bytes</strong></p>
 		<p>DB size: <strong>{{ .Local.Info.Size }} bytes</strong></p>
-		<p>Number of buckets: <strong>{{ .Local.Info.NumBuckets }}</strong></p>
+		<p>Number of buckets: <strong>{{ .Local.Info.NumLists }}</strong></p>
 	</section>
 
 	<section>
 		<h2>Bucket stats</h2>
 
 		<ul>
-			{{ range $name, $info := .Local.Info.Buckets }}
+			{{ range $name, $info := .Local.Info.Lists }}
 			<li class="tile" style="margin-top: 16px;">
 				<h3><a href="/db/bucket?id={{ QueryEscape $name }}">{{ $name }}</a></h3>
 				<hr style="margin: 16px 0;">

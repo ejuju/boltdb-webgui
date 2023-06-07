@@ -1,12 +1,12 @@
 {{ define "title" }}New row{{ end }}
 {{ define "main" }}
 <main>
-	<form class="vertical tile" action="/db/bucket/new-row" method="post">
+	<form class="vertical tile" action="/db/bucket/edit-row" method="post">
 		<h1>Edit row</h1>
 		<hr>
 		<input type="hidden" name="id" value="{{ .Local.BucketID }}">
-		<label>Key<input type="text" name="key" value="{{ .Local.Key }}" readonly></label>
-		<label>Value<textarea name="value" rows="5">{{ .Local.Value }}</textarea></label>
+		<label>Key<input type="text" name="key" value="{{ .Local.Row.Key }}" readonly></label>
+		<label>Value<textarea name="value" rows="5">{{ .Local.Row.Value }}</textarea></label>
 		<input type="submit" value="Edit row">
 	</form>
 </main>
