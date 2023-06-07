@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ejuju/boltdb_webgui/internal"
+	"github.com/ejuju/boltdb-webgui/internal"
 )
 
 func main() {

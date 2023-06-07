@@ -1,4 +1,4 @@
-module github.com/ejuju/boltdb_webgui
+module github.com/ejuju/boltdb-webgui
 
 go 1.20
 

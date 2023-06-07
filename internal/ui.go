@@ -3,6 +3,7 @@ package internal
 import (
 	"html/template"
 	"net/http"
+	"net/url"
 	"path/filepath"
 )
 
@@ -18,7 +19,10 @@ var layoutTmpls = []string{
 }
 
 func mustParseTmpl(commonTmpls []string, tmplDirPath, fname string) *template.Template {
-	return template.Must(template.ParseFiles(append(commonTmpls, filepath.Join(tmplDirPath, fname))...))
+	t := template.New(fname).Funcs(template.FuncMap{
+		"QueryEscape": url.QueryEscape,
+	})
+	return template.Must(t.ParseFiles(append(commonTmpls, filepath.Join(tmplDirPath, fname))...))
 }
 
 // Will panic when an error occurs during rendering, make sure you handle panic recovery in a middleware.

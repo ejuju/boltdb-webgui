@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ejuju/boltdb_webgui/pkg/logs"
+	"github.com/ejuju/boltdb-webgui/pkg/logs"
 )
 
 // Access logging middleware logs incoming HTTP requests

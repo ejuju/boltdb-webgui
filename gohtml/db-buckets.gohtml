@@ -3,17 +3,12 @@
 <main>
 	<h1>Buckets</h1>
 
-	{{ block "buckets" .Local.Buckets }}
 	<ul>
-		{{ range . }}
-		<li><a href="/db/bucket?id={{ .Name }}">{{ .Name }} ({{ .NumRows }} rows)</a></li>
-		{{ if .SubBuckets }}
-		{{ template "buckets" .SubBuckets }}
-		{{ end }}
+		{{ range $name, $info := .Local.Buckets }}
+		<li><a href="/db/bucket?id={{ $name }}">{{ $name }} ({{ $info.NumRows }} rows)</a></li>
 		{{ else }}
 		<p>No buckets to show yet</p>
 		{{ end }}
 	</ul>
-	{{ end }}
 </main>
 {{ end }}

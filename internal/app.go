@@ -1,19 +1,17 @@
 package internal
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"os"
 	"strconv"
-	"text/template"
 	"time"
 
-	"github.com/ejuju/boltdb_webgui/pkg/httputils"
-	"github.com/ejuju/boltdb_webgui/pkg/logs"
+	"github.com/ejuju/boltdb-webgui/pkg/boltutil"
+	"github.com/ejuju/boltdb-webgui/pkg/httputils"
+	"github.com/ejuju/boltdb-webgui/pkg/logs"
 	"github.com/gorilla/mux"
 	"go.etcd.io/bbolt"
 )
@@ -84,44 +82,23 @@ func handleNotFound(s *Server) http.HandlerFunc {
 
 func serveHomePage(s *Server) http.HandlerFunc {
 	tmpl := mustParseTmpl(layoutTmpls, tmplDirPath, "home.gohtml")
-
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Get top-level buckets and number of rows for each bucket
-		buckets := map[string]int{}
-		err := s.db.View(func(tx *bbolt.Tx) error {
-			return tx.ForEach(func(name []byte, b *bbolt.Bucket) error {
-				buckets[string(name)] = b.Stats().KeyN
-				return nil
-			})
-		})
-		if err != nil {
-			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
-			return
-		}
 		s.respondPageOK(w, r, tmpl, map[string]any{
-			"Buckets":  buckets,
 			"FilePath": s.db.Path(),
 		})
-		if err != nil {
-			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
-			return
-		}
 	}
 }
 
 func serveDBBucketsPage(s *Server) http.HandlerFunc {
 	tmpl := mustParseTmpl(layoutTmpls, tmplDirPath, "db-buckets.gohtml")
-	tmpl.Funcs(template.FuncMap{
-		"URLQueryEscape": url.QueryEscape,
-	})
 	return func(w http.ResponseWriter, r *http.Request) {
-		bucketsInfo, err := getAllBucketsInfo(s.db)
+		info, err := boltutil.OpenTxAndGetDBInfo(s.db)
 		if err != nil {
 			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
 			return
 		}
 		s.respondPageOK(w, r, tmpl, map[string]any{
-			"Buckets": bucketsInfo,
+			"Buckets": info.Buckets,
 		})
 	}
 }
@@ -141,83 +118,22 @@ func handleDBNewBucketPage(s *Server) http.HandlerFunc {
 
 func serveDBStatsPage(s *Server) http.HandlerFunc {
 	tmpl := mustParseTmpl(layoutTmpls, tmplDirPath, "db-stats.gohtml")
-
-	type BucketTmplData struct {
-		Name         string
-		NameSlug     string
-		NumRows      int
-		TotalRowSize int
-		AvgRowSize   int
-	}
-
-	type TmplData struct {
-		Breadcrumbs Breadcrumbs
-		FileSize    float64
-		NumBuckets  int
-		Buckets     []BucketTmplData
-	}
-
 	return func(w http.ResponseWriter, r *http.Request) {
-		tmplData := TmplData{}
-
-		// Get stats
-		fstats, err := os.Stat(s.db.Path())
+		info, err := boltutil.OpenTxAndGetDBInfo(s.db)
 		if err != nil {
 			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
 			return
 		}
-		tmplData.FileSize = float64(fstats.Size()) / 1_000_000.0 // in GB
-		// Get bucket stats for each bucket
-		err = s.db.View(func(tx *bbolt.Tx) error {
-			return tx.ForEach(func(name []byte, b *bbolt.Bucket) error {
-				tmplData.NumBuckets++
-				totalRowSize := 0
-				err := b.ForEach(func(k, v []byte) error { totalRowSize += len(v) + len(k); return nil })
-				if err != nil {
-					return err
-				}
-				numRows := b.Stats().KeyN
-				avgRowSize := 0
-				if numRows != 0 {
-					avgRowSize = totalRowSize / numRows
-				}
-				tmplData.Buckets = append(tmplData.Buckets, BucketTmplData{
-					Name:         string(name),
-					NameSlug:     url.QueryEscape(string(name)),
-					NumRows:      numRows,
-					TotalRowSize: totalRowSize,
-					AvgRowSize:   avgRowSize,
-				})
-				return nil
-			})
-		})
-		if err != nil {
-			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
-			return
-		}
-
-		s.respondPageOK(w, r, tmpl, tmplData)
+		s.respondPageOK(w, r, tmpl, map[string]any{"Info": info})
 	}
 }
 
 func serveBucketPage(s *Server) http.HandlerFunc {
 	tmpl := mustParseTmpl(layoutTmpls, tmplDirPath, "db-bucket.gohtml")
+	const numRowsPerPage = 10
 	return func(w http.ResponseWriter, r *http.Request) {
 		urlQuery := r.URL.Query()
-
-		// Get bucket ID and check if bucket exists
 		bucketID := urlQuery.Get("id")
-		ok, err := bucketExists(s.db, bucketID)
-		if err != nil {
-			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
-			return
-		}
-		if !ok {
-			s.respondErrorPageHTMLTmpl(w, r, http.StatusNotFound, fmt.Errorf("bucket %q not found", bucketID))
-			return
-		}
-
-		// Get page number or set default (0)
 		page := urlQuery.Get("page")
 		if page == "" {
 			page = "0"
@@ -228,16 +144,23 @@ func serveBucketPage(s *Server) http.HandlerFunc {
 			return
 		}
 
-		// Count number of rows
-		numRows, err := countBucketRows(s.db, bucketID)
-		if err != nil {
-			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
-			return
-		}
-
-		// Get rows from DB and render template
-		numRowsPerPage := 10
-		rows, err := getBucketRowPage(s.db, bucketID, pageNum, numRowsPerPage)
+		var info *boltutil.BucketInfo
+		var rows []*boltutil.Row
+		err = s.db.View(func(tx *bbolt.Tx) error {
+			b, err := boltutil.FindBucket(tx, []byte(bucketID))
+			if err != nil {
+				return err
+			}
+			info, err = boltutil.GetBucketInfo(b)
+			if err != nil {
+				return err
+			}
+			rows, err = boltutil.ReadBucketRowPage(b, pageNum, numRowsPerPage)
+			if err != nil {
+				return err
+			}
+			return nil
+		})
 		if err != nil {
 			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
 			return
@@ -252,55 +175,9 @@ func serveBucketPage(s *Server) http.HandlerFunc {
 			"ID":    bucketID,
 			"Rows":  rows,
 			"Page":  pageNum,
-			"Pages": make([]struct{}, 1+numRows/numRowsPerPage),
+			"Pages": make([]struct{}, 1+info.NumRows/numRowsPerPage),
 		})
 	}
-}
-
-type row struct {
-	Key   string
-	Value string
-}
-
-func getBucketRowPage(db *bbolt.DB, bucketID string, page, numRowsPerPage int) ([]row, error) {
-	rows := []row{}
-	return rows, db.View(func(tx *bbolt.Tx) error {
-		offset := page * numRowsPerPage
-		// Get bucket rows
-		c := tx.Bucket([]byte(bucketID)).Cursor()
-		for k, v := c.First(); k != nil; k, v = c.Next() {
-			for i := 0; i < offset; i++ {
-				k, v = c.Next()
-			}
-			if len(rows) == numRowsPerPage {
-				break
-			}
-			rows = append(rows, row{Key: string(k), Value: formatRowValue(string(v))})
-		}
-		return nil
-	})
-}
-
-func bucketExists(db *bbolt.DB, bucketID string) (bool, error) {
-	exists := false
-	return exists, db.View(func(tx *bbolt.Tx) error {
-		exists = tx.Bucket([]byte(bucketID)) != nil
-		return nil
-	})
-}
-
-func countBucketRows(db *bbolt.DB, bucketID string) (int, error) {
-	count := 0
-	return count, db.View(func(tx *bbolt.Tx) error {
-		count = tx.Bucket([]byte(bucketID)).Stats().KeyN
-		return nil
-	})
-}
-
-var errIdentifierNotFound = errors.New("identifier not found")
-
-func newErrIdentifierNotFound(id string) error {
-	return fmt.Errorf("%w: %q", errIdentifierNotFound, id)
 }
 
 func handleDBBucketDeleteForm(s *Server) http.HandlerFunc {
@@ -313,17 +190,16 @@ func handleDBBucketDeleteForm(s *Server) http.HandlerFunc {
 		id := r.FormValue("id")
 
 		err = s.db.Update(func(tx *bbolt.Tx) error {
-			bucket := tx.Bucket([]byte(id))
-			if bucket == nil {
-				return newErrIdentifierNotFound(id)
+			_, err := boltutil.FindBucket(tx, []byte(id))
+			if err != nil {
+				return err
 			}
 			return tx.DeleteBucket([]byte(id))
 		})
-		if errors.Is(err, errIdentifierNotFound) {
-			s.respondErrorPageHTMLTmpl(w, r, http.StatusBadRequest, err)
+		if errors.Is(err, boltutil.ErrNotFound) {
+			s.respondErrorPageHTMLTmpl(w, r, http.StatusNotFound, err)
 			return
-		}
-		if err != nil {
+		} else if err != nil {
 			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
 			return
 		}
@@ -343,20 +219,16 @@ func handleDBBucketDeleteRowForm(s *Server) http.HandlerFunc {
 		key := r.FormValue("key")
 
 		err = s.db.Update(func(tx *bbolt.Tx) error {
-			bucket := tx.Bucket([]byte(id))
-			if bucket == nil {
-				return newErrIdentifierNotFound(id)
+			b, err := boltutil.FindBucket(tx, []byte(id))
+			if err != nil {
+				return err
 			}
-			if bucket.Get([]byte(key)) == nil {
-				return newErrIdentifierNotFound(key)
-			}
-			return bucket.Delete([]byte(key))
+			return boltutil.DeleteRow(b, []byte(key))
 		})
-		if errors.Is(err, errIdentifierNotFound) {
-			s.respondErrorPageHTMLTmpl(w, r, http.StatusBadRequest, err)
+		if errors.Is(err, boltutil.ErrNotFound) {
+			s.respondErrorPageHTMLTmpl(w, r, http.StatusNotFound, err)
 			return
-		}
-		if err != nil {
+		} else if err != nil {
 			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
 			return
 		}
@@ -365,20 +237,26 @@ func handleDBBucketDeleteRowForm(s *Server) http.HandlerFunc {
 	}
 }
 
-func formatRowValue(s string) string {
-	buf := &bytes.Buffer{}
-	err := json.Indent(buf, []byte(s), "", "\t")
-	if err != nil {
-		return s
-	}
-	return buf.String()
-}
-
 func handleDBBucketNewRowPage(s *Server) http.HandlerFunc {
 	tmpl := mustParseTmpl(layoutTmpls, tmplDirPath, "db-bucket-new-row.gohtml")
 	return func(w http.ResponseWriter, r *http.Request) {
+		bucketName := r.URL.Query().Get("id")
+		autoKey := uint64(0)
+		err := s.db.Update(func(tx *bbolt.Tx) error {
+			b, err := boltutil.FindBucket(tx, []byte(bucketName))
+			if err != nil {
+				return err
+			}
+			autoKey, err = b.NextSequence()
+			return err
+		})
+		if err != nil {
+			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
+			return
+		}
 		s.respondPageOK(w, r, tmpl, map[string]any{
-			"BucketID": r.URL.Query().Get("id"),
+			"BucketID": bucketName,
+			"AutoKey":  autoKey,
 		})
 	}
 }
@@ -397,17 +275,16 @@ func handleDBBucketNewRowForm(s *Server) http.HandlerFunc {
 
 		// Write value to bucket key
 		err = s.db.Update(func(tx *bbolt.Tx) error {
-			bucket := tx.Bucket([]byte(bucketID))
-			if bucket == nil {
-				return newErrIdentifierNotFound(bucketID)
+			b, err := boltutil.FindBucket(tx, []byte(bucketID))
+			if err != nil {
+				return err
 			}
-			return bucket.Put([]byte(key), []byte(value))
+			return boltutil.CreateRow(b, []byte(key), []byte(value))
 		})
-		if errors.Is(err, errIdentifierNotFound) {
+		if errors.Is(err, boltutil.ErrNotFound) {
 			s.respondErrorPageHTMLTmpl(w, r, http.StatusNotFound, err)
 			return
-		}
-		if err != nil {
+		} else if err != nil {
 			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
 			return
 		}
@@ -447,17 +324,14 @@ func handleDBBucketEditRowPage(s *Server) http.HandlerFunc {
 		var value []byte
 
 		err := s.db.View(func(tx *bbolt.Tx) error {
-			b := tx.Bucket([]byte(id))
-			if b == nil {
-				return newErrIdentifierNotFound(id)
+			b, err := boltutil.FindBucket(tx, []byte(id))
+			if err != nil {
+				return err
 			}
-			value = b.Get([]byte(key))
-			if value == nil {
-				return newErrIdentifierNotFound(key)
-			}
-			return nil
+			value, err = boltutil.ReadRow(b, []byte(key))
+			return err
 		})
-		if errors.Is(err, errIdentifierNotFound) {
+		if errors.Is(err, boltutil.ErrNotFound) {
 			s.respondErrorPageHTMLTmpl(w, r, http.StatusBadRequest, err)
 			return
 		}
@@ -492,12 +366,20 @@ func handleDBBucketEditRowForm(s *Server) http.HandlerFunc {
 		value := r.FormValue("value")
 
 		err = s.db.Update(func(tx *bbolt.Tx) error {
-			return tx.Bucket([]byte(id)).Put([]byte(key), []byte(value))
+			b, err := boltutil.FindBucket(tx, []byte(id))
+			if err != nil {
+				return err
+			}
+			return boltutil.UpdateRow(b, []byte(key), []byte(value))
 		})
-		if err != nil {
+		if errors.Is(err, boltutil.ErrNotFound) {
+			s.respondErrorPageHTMLTmpl(w, r, http.StatusNotFound, err)
+			return
+		} else if err != nil {
 			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
 			return
 		}
+
 		http.Redirect(w, r, "/db/bucket?id="+url.QueryEscape(id), http.StatusSeeOther)
 	}
 }

@@ -21,7 +21,7 @@
 		{{ range .Local.Rows }}
 		<section>
 			<h3 class="truncate-text">{{ .Key }}</h3>
-			<p>{{ len .Value }} bytes</p>
+			<p>{{ .Size }} bytes</p>
 			<menu type="toolbar">
 				<li style="margin-left: auto;">
 					<a href="/db/bucket/edit-row?id={{ $.Local.ID }}&key={{ .Key }}" role="button"

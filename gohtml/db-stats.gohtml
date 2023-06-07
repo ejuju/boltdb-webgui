@@ -4,21 +4,22 @@
 	<h1>Stats</h1>
 
 	<section>
-		<p>Total file size: <strong>{{ .Local.FileSize }} GB</strong></p>
-		<p>Number of buckets: <strong>{{ .Local.NumBuckets }}</strong></p>
+		<p>Total file size: <strong>{{ .Local.Info.FileSize }} GB</strong></p>
+		<p>DB size: <strong>{{ .Local.Info.Size }} bytes</strong></p>
+		<p>Number of buckets: <strong>{{ .Local.Info.NumBuckets }}</strong></p>
 	</section>
 
 	<section>
 		<h2>Bucket stats</h2>
 
 		<ul>
-			{{ range .Local.Buckets }}
+			{{ range $name, $info := .Local.Info.Buckets }}
 			<li class="tile" style="margin-top: 16px;">
-				<h3><a href="/db/bucket?id={{ .NameSlug }}">{{ .Name }}</a></h3>
+				<h3><a href="/db/bucket?id={{ QueryEscape $name }}">{{ $name }}</a></h3>
 				<hr style="margin: 16px 0;">
-				<p>Number of rows: <strong>{{ .NumRows }}</strong></p>
-				<p>Average row size (including key): <strong>{{ .AvgRowSize }} bytes</strong></p>
-				<p>Total row size (including key): <strong>{{ .TotalRowSize }} bytes</strong></p>
+				<p>Number of rows: <strong>{{ $info.NumRows }}</strong></p>
+				<p>Average row size: <strong>{{ $info.AvgRowSize }} bytes</strong></p>
+				<p>Total row size: <strong>{{ $info.TotalRowSize }} bytes</strong></p>
 			</li>
 			{{ end }}
 		</ul>

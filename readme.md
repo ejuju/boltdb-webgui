@@ -1,4 +1,16 @@
-# Features
+# Web GUI for BoltDB files
+
+## Installation
+
+1. Install Go
+2. Run `go install github.com/ejuju/boltdb-webgui`
+
+## Usage
+
+1. Run `boltdb-webgui example_boltdb_file_path`
+2. Open web browser on http://localhost:8080/
+
+## Features
 
 - [x] Bucket CRUD
 - [x] Bucket row CRUD
