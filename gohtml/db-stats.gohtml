@@ -1,0 +1,27 @@
+{{ define "title" }}Home{{ end }}
+{{ define "main" }}
+<main>
+	<h1>Stats</h1>
+
+	<section>
+		<p>Total file size: <strong>{{ .Local.FileSize }} GB</strong></p>
+		<p>Number of buckets: <strong>{{ .Local.NumBuckets }}</strong></p>
+	</section>
+
+	<section>
+		<h2>Bucket stats</h2>
+
+		<ul>
+			{{ range .Local.Buckets }}
+			<li class="tile" style="margin-top: 16px;">
+				<h3><a href="/db/bucket?id={{ .NameSlug }}">{{ .Name }}</a></h3>
+				<hr style="margin: 16px 0;">
+				<p>Number of rows: <strong>{{ .NumRows }}</strong></p>
+				<p>Average row size (including key): <strong>{{ .AvgRowSize }} bytes</strong></p>
+				<p>Total row size (including key): <strong>{{ .TotalRowSize }} bytes</strong></p>
+			</li>
+			{{ end }}
+		</ul>
+	</section>
+</main>
+{{ end }}

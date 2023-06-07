@@ -5,8 +5,8 @@
 		<h1>Add a new row inside bucket {{ .Local.BucketID }}</h1>
 		<hr>
 		<input type="hidden" name="id" value="{{ .Local.BucketID }}">
-		<label>Key<input type="text" name="key"></label>
-		<label>Value<textarea name="value" rows="5"></textarea></label>
+		<label>Key<input type="text" name="key" placeholder="Enter the row key here..."></label>
+		<label>Value<textarea name="value" rows="5" placeholder="Enter the row value here..."></textarea></label>
 		<input type="submit" value="Add row">
 	</form>
 </main>

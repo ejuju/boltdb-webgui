@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"net/http"
 	"time"
 
@@ -19,8 +18,6 @@ func main() {
 		ReadHeaderTimeout: 30 * time.Second,
 		MaxHeaderBytes:    8000,
 	}
-
-	log.Printf("starting HTTP server (%s)", httpServer.Addr)
 	err := httpServer.ListenAndServe()
 	if err != nil {
 		panic(err)

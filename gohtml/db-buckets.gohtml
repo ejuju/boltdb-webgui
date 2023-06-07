@@ -2,13 +2,6 @@
 {{ define "main" }}
 <main>
 	<h1>Buckets</h1>
-	<menu type="toolbar">
-		<li>
-			<a role="button" href="/db/new-bucket">Create a new bucket</a>
-		</li>
-	</menu>
-
-	<hr style="margin-top: 32px;">
 
 	{{ block "buckets" .Local.Buckets }}
 	<ul>

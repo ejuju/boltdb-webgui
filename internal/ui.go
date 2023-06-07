@@ -28,7 +28,7 @@ func (s *Server) respondHTMLTmpl(
 	statusCode int,
 	t *template.Template,
 	tname string,
-	data map[string]any,
+	data any,
 ) {
 	w.WriteHeader(statusCode)
 	err := t.ExecuteTemplate(w, tname, map[string]any{
@@ -37,7 +37,9 @@ func (s *Server) respondHTMLTmpl(
 		"Local":   data,
 	})
 	if err != nil {
-		panic(err)
+		w.Write([]byte(err.Error()))
+		s.logger.Log(err.Error())
+		return
 	}
 }
 
@@ -52,6 +54,13 @@ func (s *Server) respondErrorPageHTMLTmpl(w http.ResponseWriter, r *http.Request
 	})
 }
 
-func (s *Server) respondPageOK(w http.ResponseWriter, r *http.Request, t *template.Template, data map[string]any) {
+func (s *Server) respondPageOK(w http.ResponseWriter, r *http.Request, t *template.Template, data any) {
 	s.respondHTMLTmpl(w, r, http.StatusOK, t, tmplLayoutKey, data)
+}
+
+type Breadcrumbs []Breadcrumb
+
+type Breadcrumb struct {
+	Name string
+	Path string
 }

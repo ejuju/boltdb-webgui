@@ -1,6 +1,6 @@
 {{ define "header" }}
 <header>
-	<nav>
+	<nav role="navigation">
 		<ul>
 			<li><a href="/"><strong>BoltDB Web GUI</strong></a></li>
 		</ul>
@@ -12,37 +12,76 @@
 	</nav>
 	<div>Current database: {{ .DBPath }}</div>
 
+	{{ if .Local.Breadcrumbs }}
+	<nav class="breadcrumbs">
+		<ul>
+			{{ range $i, $breadcrumb := .Local.Breadcrumbs }}
+			{{ if not (eq $i 0) }}<span>/</span>{{ end }}
+			{{ if .Path }}
+			<li><a href="{{ .Path }}" class="truncate-text">{{ .Name }}</a></li>
+			{{ else }}
+			<li>
+				<p class="truncate-text">{{ .Name }}</p>
+			</li>
+			{{ end }}
+			{{ end }}
+		</ul>
+	</nav>
+	{{ end }}
+
+	<style>
+		body>header {
+			display: flex;
+			flex-direction: column;
+		}
+
+		body>header div {
+			background-color: var(--color-bg-1);
+			padding: 16px;
+			color: var(--color-txt-2);
+		}
+
+		body>header>nav[role="navigation"] {
+			padding: 16px;
+			background-color: var(--color-bg-2);
+
+			display: flex;
+			flex-wrap: wrap;
+			gap: 16px;
+			justify-content: space-between;
+		}
+
+		body>header>nav[role="navigation"]>ul {
+			display: flex;
+			align-items: center;
+			gap: 16px;
+		}
+
+		body>header>nav[role="navigation"]>ul>li {
+			display: flex;
+		}
+
+		.breadcrumbs {
+			background-color: var(--color-bg-1);
+			display: flex;
+			gap: 8px;
+			flex-wrap: wrap;
+			padding: 16px;
+			padding-top: 0;
+		}
+
+		.breadcrumbs>ul {
+			display: contents;
+		}
+
+		.breadcrumbs>ul>li {
+			display: flex;
+			max-width: 100%;
+		}
+
+		.breadcrumbs .truncate-text {
+			max-width: 30ch;
+		}
+	</style>
 </header>
-
-<style>
-	body>header {
-		background-color: var(--color-bg-2);
-		display: flex;
-		flex-direction: column;
-	}
-
-	body>header div {
-		opacity: 0.5;
-		background-color: var(--color-bg-1);
-		padding: 16px;
-	}
-
-	body>header nav {
-		padding: 16px;
-		display: flex;
-		flex-wrap: wrap;
-		gap: 16px;
-		justify-content: space-between;
-	}
-
-	body>header nav>ul {
-		display: flex;
-		align-items: center;
-		gap: 16px;
-	}
-
-	body>header nav>ul>li {
-		display: flex;
-	}
-</style>
 {{ end }}

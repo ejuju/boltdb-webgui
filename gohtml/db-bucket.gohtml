@@ -10,47 +10,90 @@
 			</a>
 		</li>
 		<li>
-			<a role="button" href="/db/bucket/delete?id={{ .Local.ID }}" style="background-color: var(--color-danger);">
-				Delete this bucket
-			</a>
+			<form action="/db/bucket/delete" method="post">
+				<input type="hidden" name="id" value="{{ .Local.ID }}">
+				<input type="submit" value="Delete this bucket" style="background-color: var(--color-danger);">
+			</form>
 		</li>
 	</menu>
 
-	<!-- {{ if .Local.Rows }}
-	<form action="/bucket" method="get" hx-boost="true">
-		<input type="hidden" name="id" value="{{ .Local.ID }}">
-		<select name="page">
-			{{ range $i, $_ := .Local.Pages }}
-			<option value="{{ $i }}" {{- if eq $.Page $i }} selected{{ end }}>{{ $i }}</option>
-			{{ end }}
-		</select>
-		<input type="submit" value="Refresh">
-	</form>
-	{{ end }} -->
-
-	<section id="rows" style="margin-top: 32px; display: grid; gap: 16px;">
+	<section id="bucket-rows">
 		{{ range .Local.Rows }}
-		<article class="tile" style="display: flex; align-items: center; gap: 16px;">
-			<h3>{{ .Key }}</h3>
-			<pre>{{ .Value }}</pre>
-			<menu style="display: flex; align-items: center; gap: 16px; margin-left: auto;">
-				<li>
-					<a href="/db/bucket/edit-row?key={{ .Key }}" role="button"
+		<section>
+			<h3 class="truncate-text">{{ .Key }}</h3>
+			<p>{{ len .Value }} bytes</p>
+			<menu type="toolbar">
+				<li style="margin-left: auto;">
+					<a href="/db/bucket/edit-row?id={{ $.Local.ID }}&key={{ .Key }}" role="button"
 						style="background-color: var(--color-neutral);">
 						Edit
 					</a>
 				</li>
 				<li>
-					<form action="/db/bucket/delete-row?id={{ $.ID }}&key={{ .Key }}" method="post">
+					<form action="/db/bucket/delete-row" method="post">
+						<input type="hidden" name="id" value="{{ $.Local.ID }}">
+						<input type="hidden" name="key" value="{{ .Key }}">
 						<input type="submit" value="Delete" style="background-color: var(--color-danger);">
 					</form>
 				</li>
 			</menu>
-		</article>
+			{{ if .Value }}
+			<pre>{{ .Value }}</pre>
+			{{ end }}
+		</section>
 		{{ else }}
 		<p>No rows to show yet.</p>
 		{{ end }}
 	</section>
+
+	{{ if .Local.Rows }}
+	<form action="/db/bucket" method="get">
+		<input type="hidden" name="id" value="{{ .Local.ID }}">
+		<select name="page">
+			{{ range $i, $_ := .Local.Pages }}
+			<option value="{{ $i }}" {{ if eq $.Local.Page $i }} selected{{ end }}>{{ $i }}</option>
+			{{ end }}
+		</select>
+		<input type="submit" value="Refresh">
+	</form>
+	{{ end }}
+
+	<style>
+		#bucket-rows {
+			margin-top: 32px;
+			display: grid;
+			gap: 16px;
+		}
+
+		#bucket-rows>section {
+			display: grid;
+			grid-template-columns: 1fr auto auto;
+			grid-template-rows: auto auto;
+			align-items: center;
+			background-color: var(--color-bg-2);
+			border-radius: var(--border-radius);
+			max-width: 100%;
+		}
+
+		#bucket-rows>section>h3 {
+			padding: 16px;
+		}
+
+		#bucket-rows>section>menu {
+			padding: 16px;
+			margin-left: auto;
+		}
+
+		#bucket-rows>section>pre {
+			border-top: 1px solid var(--color-bg-3);
+			width: 100%;
+			padding: 16px;
+			white-space: pre-wrap;
+			word-wrap: break-word;
+			word-break: break-all;
+			grid-column: span 3;
+		}
+	</style>
 </main>
 
 {{ end }}

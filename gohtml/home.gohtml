@@ -2,21 +2,5 @@
 {{ define "main" }}
 <main>
 	<h1>Currently viewing database "{{ .Local.FilePath }}"</h1>
-
-	<section>
-		<h2>Stats</h2>
-		<article>File size: <strong>{{ .Local.FileSize }} GB</strong></article>
-	</section>
-
-	<section>
-		<h2>Top-level buckets</h2>
-		<ul>
-			{{ range $k, $v := .Local.Buckets }}
-			<li><a href="/db/bucket?id={{ $k }}">{{ $k }} ({{ $v }} rows)</a></li>
-			{{ else }}
-			<p>No buckets to show yet</p>
-			{{ end }}
-		</ul>
-	</section>
 </main>
 {{ end }}

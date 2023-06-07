@@ -1,10 +1,16 @@
 {{ define "css" }}
 <style>
 	:root {
-		--color-bg-0: hsl(0, 0%, 5%);
-		--color-bg-1: hsl(0, 0%, 10%);
-		--color-bg-2: hsl(0, 0%, 15%);
+		--color-bg-0: hsl(250, 12%, 5%);
+		--color-bg-1: hsl(250, 10%, 10%);
+		--color-bg-2: hsl(250, 11%, 15%);
+		--color-bg-3: hsl(250, 10%, 25%);
+
 		--color-txt-0: hsl(0, 0%, 95%);
+		--color-txt-1: hsl(0, 0%, 85%);
+		--color-txt-2: hsl(0, 0%, 75%);
+		--color-txt-3: hsl(0, 0%, 65%);
+
 		--color-danger: rgb(255, 0, 0);
 		--color-neutral: rgb(70, 70, 70);
 
@@ -55,8 +61,15 @@
 
 	input[type="text"],
 	textarea {
-		padding: 0.25rem;
+		padding: 4px;
+		padding-left: 8px;
 		border-radius: var(--border-radius);
+		border: 1px solid var(--color-txt-3);
+	}
+
+	input[type="text"]:focus,
+	textarea:focus {
+		outline: solid 4px var(--color-neutral);
 	}
 
 	textarea {
@@ -67,6 +80,9 @@
 		display: flex;
 		flex-direction: column;
 		gap: 1.5rem;
+		max-width: 400px;
+		width: 100%;
+		margin: 0 auto;
 	}
 
 	form.vertical label {
@@ -94,9 +110,15 @@
 
 	menu[type="toolbar"] {
 		display: flex;
+		flex-direction: row;
 		flex-wrap: wrap;
 		gap: 16px;
 	}
+
+	menu[type="toolbar"]>li {
+		display: flex;
+	}
+
 
 	h1 {
 		font-size: 1.25rem;
@@ -109,8 +131,14 @@
 
 	.tile {
 		padding: 24px 16px;
-		background-color: var(--color-bg-1);
+		background-color: var(--color-bg-2);
 		border-radius: var(--border-radius);
+	}
+
+	.truncate-text {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 </style>
 {{ end }}
