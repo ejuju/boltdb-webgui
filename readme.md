@@ -7,7 +7,7 @@
 
 ## Usage
 
-1. Run `boltdb-webgui example_boltdb_file_path`
+1. Run `boltdb-webgui ./your_file 8080`
 2. Open web browser on http://localhost:8080/
 
 ## Features
