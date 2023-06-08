@@ -43,7 +43,6 @@ func (s *Server) NewHTTPHandler() http.Handler {
 	router.PathPrefix("/public/").Handler(staticFileServer)
 	router.HandleFunc("/", serveHomePage(s)).Methods(http.MethodGet)
 	router.HandleFunc("/db", serveDBPage(s)).Methods(http.MethodGet)
-	router.HandleFunc("/db/stats", serveDBStatsPage(s)).Methods(http.MethodGet)
 	router.HandleFunc("/db/new-bucket", serveDBNewBucketPage(s)).Methods(http.MethodGet)
 	router.HandleFunc("/db/new-bucket", handleDBNewBucketForm(s)).Methods(http.MethodPost)
 	router.HandleFunc("/db/search", serveDBSearchPage(s)).Methods(http.MethodGet)
@@ -90,7 +89,7 @@ func serveDBPage(s *Server) http.HandlerFunc {
 			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
 			return
 		}
-		s.respondPageOK(w, r, tmpl, map[string]any{"Buckets": info.Lists})
+		s.respondPageOK(w, r, tmpl, map[string]any{"Info": info})
 	}
 }
 
@@ -103,18 +102,6 @@ func serveDBNewBucketPage(s *Server) http.HandlerFunc {
 				{Name: "Add new bucket"},
 			},
 		})
-	}
-}
-
-func serveDBStatsPage(s *Server) http.HandlerFunc {
-	tmpl := mustParseTmpl(layoutTmpls, tmplDirPath, "db-stats.gohtml")
-	return func(w http.ResponseWriter, r *http.Request) {
-		info, err := kvstore.GetDBInfo(s.db)
-		if err != nil {
-			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
-			return
-		}
-		s.respondPageOK(w, r, tmpl, map[string]any{"Info": info})
 	}
 }
 
@@ -215,7 +202,7 @@ func handleDBNewBucketForm(s *Server) http.HandlerFunc {
 		} else if err != nil {
 			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
 		} else {
-			http.Redirect(w, r, "/db/bucket?id="+name, http.StatusSeeOther)
+			http.Redirect(w, r, "/db/search?list="+url.QueryEscape(name), http.StatusSeeOther)
 		}
 	}
 }
@@ -273,6 +260,7 @@ func serveDBSearchPage(s *Server) http.HandlerFunc {
 	tmpl := mustParseTmpl(layoutTmpls, tmplDirPath, "db-search.gohtml")
 	const numRowsPerPage = 10
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Parse inputs
 		err := r.ParseForm()
 		if err != nil {
 			s.respondErrorPageHTMLTmpl(w, r, http.StatusBadRequest, err)
@@ -299,6 +287,7 @@ func serveDBSearchPage(s *Server) http.HandlerFunc {
 			}
 		}
 
+		// Compile regex from query if needed
 		var regex *regexp.Regexp
 		if query != "" {
 			regex, err = regexp.Compile(query)
@@ -308,26 +297,27 @@ func serveDBSearchPage(s *Server) http.HandlerFunc {
 			}
 		}
 
-		lists := map[string]bool{}
-		err = s.db.ReadEachList(func(name string) error {
-			// Set "checked" to true
-			// if bucket is selected or if no bucket has been selected at all
-			lists[name] = false
-			if len(selectedLists) == 0 {
-				lists[name] = true
-			}
-			for _, selectedName := range selectedLists {
-				if selectedName == name {
-					lists[name] = true
-				}
-			}
-			return nil
-		})
+		// List all buckets, set selected lists default if needed and set search list for UI
+		lists := []string{}
+		err = s.db.ReadEachList(func(name string) error { lists = append(lists, name); return nil })
 		if err != nil {
 			s.respondErrorPageHTMLTmpl(w, r, http.StatusInternalServerError, err)
 			return
 		}
+		if len(selectedLists) == 0 {
+			selectedLists = lists
+		}
+		searchLists := map[string]bool{}
+		for _, name := range lists {
+			searchLists[name] = false
+			for _, selectedName := range selectedLists {
+				if selectedName == name {
+					searchLists[name] = true
+				}
+			}
+		}
 
+		// Search DB
 		result, err := kvstore.Search(s.db, selectedLists, regex, excludeQueryMatches, pageIndex-1, numRowsPerPage)
 		if errors.Is(err, kvstore.ErrNotFound) {
 			s.respondErrorPageHTMLTmpl(w, r, http.StatusBadRequest, err)
@@ -337,9 +327,10 @@ func serveDBSearchPage(s *Server) http.HandlerFunc {
 			return
 		}
 
+		// OK
 		tmplData := map[string]any{
 			"Result":        result,
-			"Lists":         lists,
+			"Lists":         searchLists,
 			"SelectedLists": selectedLists,
 			"Query":         query,
 			"Exclude":       excludeQueryMatches,
