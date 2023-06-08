@@ -278,8 +278,8 @@ func serveDBSearchPage(s *Server) http.HandlerFunc {
 			return
 		}
 		page := r.FormValue("page")
-		pageIndex := 1
-		if page != "" && page != "1" {
+		pageIndex := 0
+		if page != "" && page != "0" {
 			pageIndex, err = strconv.Atoi(page)
 			if err != nil {
 				s.respondErrorPageHTMLTmpl(w, r, http.StatusBadRequest, err)
@@ -318,7 +318,7 @@ func serveDBSearchPage(s *Server) http.HandlerFunc {
 		}
 
 		// Search DB
-		result, err := kvstore.Search(s.db, selectedLists, regex, excludeQueryMatches, pageIndex-1, numRowsPerPage)
+		result, err := kvstore.Search(s.db, selectedLists, regex, excludeQueryMatches, pageIndex, numRowsPerPage)
 		if errors.Is(err, kvstore.ErrNotFound) {
 			s.respondErrorPageHTMLTmpl(w, r, http.StatusBadRequest, err)
 			return
